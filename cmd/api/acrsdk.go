@@ -20,6 +20,14 @@ const (
 	registryURL = ".azurecr.io"
 )
 
+type Client struct {
+	baseURL string
+}
+
+func (c *Client) SetBaseURL(url string) {
+	c.baseURL = url
+}
+
 // BearerAuth returns the authentication header in case an access token was specified.
 func BearerAuth(accessToken string) string {
 	return "Bearer " + accessToken
@@ -50,7 +58,7 @@ func LoginURLWithPrefix(loginURL string) string {
 }
 
 // AcrListTags list the tags of a repository with their attributes.
-func AcrListTags(ctx context.Context,
+func (c *Client) AcrListTags(ctx context.Context,
 	loginURL string,
 	auth string,
 	repoName string,
@@ -96,7 +104,7 @@ func AcrListTags(ctx context.Context,
 }
 
 // AcrDeleteTag deletes the tag by reference.
-func AcrDeleteTag(ctx context.Context,
+func (c *Client) AcrDeleteTag(ctx context.Context,
 	loginURL string,
 	auth string,
 	repoName string,
@@ -136,7 +144,7 @@ func AcrDeleteTag(ctx context.Context,
 }
 
 // AcrListManifests list all the manifest in a repository with their attributes.
-func AcrListManifests(ctx context.Context,
+func (c *Client) AcrListManifests(ctx context.Context,
 	loginURL string,
 	auth string,
 	repoName string,
@@ -182,7 +190,7 @@ func AcrListManifests(ctx context.Context,
 }
 
 // DeleteManifest deletes a manifest using the digest as a reference.
-func DeleteManifest(ctx context.Context,
+func (c *Client) DeleteManifest(ctx context.Context,
 	loginURL string,
 	auth string,
 	repoName string,

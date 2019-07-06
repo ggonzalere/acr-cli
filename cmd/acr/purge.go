@@ -51,6 +51,8 @@ func newPurgeCmd(out io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.Background()
 			loginURL := api.LoginURL(parameters.registryName)
+			acrClient := &api.Client{}
+			acrClient.SetBaseURL(loginURL)
 			var auth string
 			if len(parameters.accessToken) > 0 && (len(parameters.username) > 0 || len(parameters.password) > 0) {
 				return errors.New("bearer token and username, password are mutually exclusive")
@@ -65,12 +67,12 @@ func newPurgeCmd(out io.Writer) *cobra.Command {
 				}
 			}
 			if !parameters.dangling {
-				err := PurgeTags(ctx, loginURL, auth, parameters.repoName, parameters.ago, parameters.filter)
+				err := PurgeTags(ctx, loginURL, auth, parameters.repoName, parameters.ago, parameters.filter, acrClient)
 				if err != nil {
 					return err
 				}
 			}
-			err := PurgeDanglingManifests(ctx, loginURL, auth, parameters.repoName)
+			err := PurgeDanglingManifests(ctx, loginURL, auth, parameters.repoName, acrClient)
 			if err != nil {
 				return err
 			}
@@ -94,7 +96,7 @@ func newPurgeCmd(out io.Writer) *cobra.Command {
 }
 
 // PurgeTags deletes all tags that are older than the ago value and that match the filter string (if present).
-func PurgeTags(ctx context.Context, loginURL string, auth string, repoName string, ago string, filter string) error {
+func PurgeTags(ctx context.Context, loginURL string, auth string, repoName string, ago string, filter string, acrClient api.ACRClient) error {
 	var wg sync.WaitGroup
 	agoDuration, err := ParseDuration(ago)
 	if err != nil {
@@ -111,7 +113,7 @@ func PurgeTags(ctx context.Context, loginURL string, auth string, repoName strin
 	var errorChannel = make(chan error, 100)
 	defer close(errorChannel)
 	lastTag := ""
-	resultTags, err := api.AcrListTags(ctx, loginURL, auth, repoName, "", lastTag)
+	resultTags, err := acrClient.AcrListTags(ctx, loginURL, auth, repoName, "", lastTag)
 	if err != nil {
 		return err
 	}
@@ -132,7 +134,7 @@ func PurgeTags(ctx context.Context, loginURL string, auth string, repoName strin
 			}
 			if lastUpdateTime.Before(timeToCompare) {
 				wg.Add(1)
-				go Untag(ctx, &wg, errorChannel, loginURL, auth, repoName, tagName)
+				go Untag(ctx, &wg, errorChannel, loginURL, auth, repoName, tagName, acrClient)
 			}
 		}
 		wg.Wait()
@@ -143,7 +145,7 @@ func PurgeTags(ctx context.Context, loginURL string, auth string, repoName strin
 			}
 		}
 		lastTag = *tags[len(tags)-1].Name
-		resultTags, err = api.AcrListTags(ctx, loginURL, auth, repoName, "", lastTag)
+		resultTags, err = acrClient.AcrListTags(ctx, loginURL, auth, repoName, "", lastTag)
 		if err != nil {
 			return err
 		}
@@ -184,9 +186,10 @@ func Untag(ctx context.Context,
 	loginURL string,
 	auth string,
 	repoName string,
-	tag string) {
+	tag string,
+	acrClient api.ACRClient) {
 	defer wg.Done()
-	err := api.AcrDeleteTag(ctx, loginURL, auth, repoName, tag)
+	err := acrClient.AcrDeleteTag(ctx, loginURL, auth, repoName, tag)
 	if err != nil {
 		errorChannel <- err
 		return
@@ -195,12 +198,12 @@ func Untag(ctx context.Context,
 }
 
 // PurgeDanglingManifests runs if the dangling flag is specified and deletes all manifests that do not have any tags associated with them.
-func PurgeDanglingManifests(ctx context.Context, loginURL string, auth string, repoName string) error {
+func PurgeDanglingManifests(ctx context.Context, loginURL string, auth string, repoName string, acrClient api.ACRClient) error {
 	var errorChannel = make(chan error, 100)
 	defer close(errorChannel)
 	var wg sync.WaitGroup
 	lastManifestDigest := ""
-	resultManifests, err := api.AcrListManifests(ctx, loginURL, auth, repoName, "", lastManifestDigest)
+	resultManifests, err := acrClient.AcrListManifests(ctx, loginURL, auth, repoName, "", lastManifestDigest)
 	if err != nil {
 		return err
 	}
@@ -209,7 +212,7 @@ func PurgeDanglingManifests(ctx context.Context, loginURL string, auth string, r
 		for _, manifest := range manifests {
 			if manifest.Tags == nil {
 				wg.Add(1)
-				go HandleManifest(ctx, &wg, errorChannel, loginURL, auth, repoName, *manifest.Digest)
+				go HandleManifest(ctx, &wg, errorChannel, loginURL, auth, repoName, *manifest.Digest, acrClient)
 			}
 		}
 		wg.Wait()
@@ -220,7 +223,7 @@ func PurgeDanglingManifests(ctx context.Context, loginURL string, auth string, r
 			}
 		}
 		lastManifestDigest = *manifests[len(manifests)-1].Digest
-		resultManifests, err = api.AcrListManifests(ctx, loginURL, auth, repoName, "", lastManifestDigest)
+		resultManifests, err = acrClient.AcrListManifests(ctx, loginURL, auth, repoName, "", lastManifestDigest)
 		if err != nil {
 			return err
 		}
@@ -235,9 +238,10 @@ func HandleManifest(ctx context.Context,
 	loginURL string,
 	auth string,
 	repoName string,
-	digest string) {
+	digest string,
+	acrClient api.ACRClient) {
 	defer wg.Done()
-	err := api.DeleteManifest(ctx, loginURL, auth, repoName, digest)
+	err := acrClient.DeleteManifest(ctx, loginURL, auth, repoName, digest)
 	if err != nil {
 		errorChannel <- err
 		return
