@@ -155,7 +155,7 @@ type ManifestAttributesBase struct {
 	// Digest - Manifest digest
 	Digest *string `json:"digest,omitempty"`
 	// ImageSize - Image size
-	ImageSize *int32 `json:"imageSize,omitempty"`
+	ImageSize *int64 `json:"imageSize,omitempty"`
 	// CreatedTime - Created time
 	CreatedTime *string `json:"createdTime,omitempty"`
 	// LastUpdateTime - Last update time
